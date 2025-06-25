@@ -1,6 +1,6 @@
 LLM-Finetune-Predictor
 
-**版本: 1.0**
+**版本: 啥都没有**
 
 ## 1. 项目简介 (Project Overview)
 
