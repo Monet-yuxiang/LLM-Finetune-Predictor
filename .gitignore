@@ -192,3 +192,36 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# =========================
+# Project-Specific Ignores
+# =========================
+
+# 1. 忽略所有数据文件
+# 数据集通常很大，不应上传到 Git
+/data/
+
+# 2. 忽略所有实验结果
+# 结果文件是代码运行生成的，而不是源代码
+/results/
+
+# 3. 忽略下载的模型文件
+# 模型文件极大，应单独管理
+/models/
+
+# 4. 忽略虚拟环境文件夹
+# 每个协作者的本地环境都不同
+venv/
+.venv/
+env/
+.env/
+
+# 5. 忽略操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 6. 忽略日志文件和敏感信息文件
+*.log
+.env
+*.env.*
+!*.env.example
