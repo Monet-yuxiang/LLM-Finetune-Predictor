@@ -1,0 +1,40 @@
+{
+  "_comment": "此文件定义了各个下游任务的配置，包括数据源、评估标准和专用的评估Prompt。",
+  "QA_SQuAD": {
+    "task_name": "抽取式问答 (SQuAD)",
+    "description": "基于SQuAD数据集的格式，考察模型理解与信息抽取能力。",
+    "training_data_sources": [
+      "Alpaca/Dolly15k 风格合成",
+      "SQuAD 训练集子集"
+    ],
+    "evaluation_dataset_name": "squad",
+    "evaluation_dataset_split": "validation",
+    "evaluation_prompt_template": "Extract the exact answer from context. Do not explain. only exact phrase\n\nContext: {context}\n\nQuestion: {question}\n\nAnswer:",
+    "metrics": ["squad"],
+    "normalization_function": "squad_normalize"
+  },
+  "Summarization_XSum": {
+    "task_name": "文本摘要 (XSum)",
+    "description": "考察模型的归纳与生成能力。",
+    "training_data_sources": [
+      "CNN/DM+XSum 风格合成"
+    ],
+    "evaluation_dataset_name": "xsum",
+    "evaluation_dataset_split": "test",
+    "evaluation_prompt_template": "Summarize the following document into a single, concise sentence.\n\nDocument: {document}\n\nSummary:",
+    "metrics": ["rouge"],
+    "normalization_function": null
+  },
+  "Sentiment_Analysis_IMDB": {
+    "task_name": "情感分析 (IMDB)",
+    "description": "考察模型的文本分类与情感辨识能力。",
+    "training_data_sources": [
+      "IMDB+SST2 风格合成"
+    ],
+    "evaluation_dataset_name": "imdb",
+    "evaluation_dataset_split": "test",
+    "evaluation_prompt_template": "Analyze the sentiment of the following movie review. Respond with only 'positive' or 'negative'.\n\nReview: {text}\n\nSentiment:",
+    "metrics": ["accuracy", "f1"],
+    "normalization_function": "lowercase"
+  }
+}
