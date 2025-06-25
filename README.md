@@ -10,10 +10,7 @@ LLM-Finetune-Predictor
 
 ## 2. 核心方法论 (Methodology)
 
-我们的框架通过一个多模块的特征提取引擎，从静态和动态两个维度全面地分析和量化数据集的适应性，其核心逻辑如下图所示：
-
-![核心筛选逻辑](https://i.imgur.com/your-image-link-for-core-logic.png)  
-[cite_start]*(注：请将此处的图片链接替换为您报告中的流程图 [cite: 9])*
+我们的框架通过一个多模块的特征提取引擎，从静态和动态两个维度全面地分析和量化数据集的适应性，其核心逻辑如下图所示：（暂无）
 
 该流程主要包括：
 1.  **特征提取引擎 (Feature Extraction Engine):** 从原始数据集 `Di` 中计算一系列元特征。
