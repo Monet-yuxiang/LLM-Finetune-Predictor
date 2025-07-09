@@ -5,6 +5,8 @@
 - 损失下降率
 - 平均梯度范数
 - 梯度一致性
+
+支持最终格式数据：context_text + qa_pairs
 """
 
 import torch
@@ -15,34 +17,64 @@ import torch.optim as optim
 from peft import get_peft_model, LoraConfig, TaskType
 import logging
 
-from .data_parsers import DatasetAnalyzer, HyperParams
+from .data_parsers import HyperParams
 
 logger = logging.getLogger(__name__)
 
-class DynamicProbeAnalyzer(DatasetAnalyzer):
-    """动态探针分析器
+class DynamicProbeAnalyzer:
+    """动态探针分析器（不再继承DatasetAnalyzer）
     
-    继承自DatasetAnalyzer，专门用于动态特征分析
+    专门用于动态特征分析，支持最终格式数据
     """
+    def __init__(self, model, tokenizer, device="cpu"):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.device = device
+
+    def sample_dataset(self, dataset: List[Dict], sample_size: int) -> List[Dict]:
+        """从数据集中采样"""
+        if len(dataset) < sample_size:
+            sample_size = len(dataset)
+        return list(np.random.choice(dataset, sample_size, replace=False))
+
+    def is_final_format(self, dataset: List[Dict]) -> bool:
+        """判断是否为最终格式数据"""
+        if not dataset:
+            return False
+        sample = dataset[0]
+        return "context_text" in sample and "qa_pairs" in sample
     
+    def extract_qa_from_final_format(self, item: Dict) -> List[Tuple[str, str]]:
+        """从最终格式数据中提取所有问答对"""
+        context = item.get("context_text", "")
+        qa_pairs = item.get("qa_pairs", [])
+        result = []
+        for qa in qa_pairs:
+            question = qa.get("question", "")
+            answer = qa.get("output", "")
+            if question and answer:
+                full_question = f"{context}\n\n{question}" if context else question
+                result.append((full_question, answer))
+        return result
+
+    def format_qa_pair(self, question: str, answer: str) -> str:
+        """将问答对格式化为模型输入格式"""
+        return f"问：{question}\n答：{answer}"
+
     def calculate_loss_decay_rate(
         self,
         dataset: List[Dict],
         hyperparams: HyperParams,
         probe_steps: int = 100,
-        sample_size: int = 50
+        sample_size: int = 50,
+        batch_size: int = 8
     ) -> Tuple[float, float, float]:
-        """计算损失下降率、平均梯度范数和梯度一致性
-        
-        Returns:
-            Tuple[float, float, float]: (损失下降率, 平均梯度范数, 梯度一致性)
-        """
+        """计算损失下降率、平均梯度范数和梯度一致性（支持最终格式，批量）"""
         if len(dataset) < sample_size:
             sample_size = len(dataset)
-        
         sampled_data = self.sample_dataset(dataset, sample_size)
-        
-        # 配置 LoRA
+        is_final_format = self.is_final_format(dataset)
+        logger.info(f"检测到数据格式: {'最终格式' if is_final_format else '标准格式'}")
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
             inference_mode=False,
@@ -51,48 +83,56 @@ class DynamicProbeAnalyzer(DatasetAnalyzer):
             lora_dropout=0.1,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj"]
         )
-        
         try:
-            # 创建 PEFT 模型
             model = get_peft_model(self.model, peft_config)
             model.train()
             optimizer = optim.AdamW(model.parameters(), lr=hyperparams.learning_rate)
             initial_loss = 0.0
             step_grad_norms = []
             batch_gradients = []
-            train_inputs = []
+            qa_list = []
             for item in sampled_data:
-                formatted_text = self.format_qa_pair(item)
+                if is_final_format:
+                    qa_list.extend(self.extract_qa_from_final_format(item))
+                else:
+                    qa_list.append(item)
+            # 组装训练输入
+            train_batches = []
+            for i in range(0, len(qa_list), batch_size):
+                batch_qa = qa_list[i:i+batch_size]
+                if is_final_format:
+                    batch_formatted = [self.format_qa_pair(q, a) for q, a in batch_qa]
+                else:
+                    batch_formatted = [self.format_qa_pair(item) for item in batch_qa]
                 inputs = self.tokenizer(
-                    formatted_text,
+                    batch_formatted,
                     return_tensors="pt",
                     truncation=True,
-                    max_length=512
+                    max_length=512,
+                    padding=True
                 )
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                train_inputs.append(inputs)
-            batch_size = max(1, len(train_inputs) // 5)
-            num_batches = len(train_inputs) // batch_size
-            for step in tqdm(range(probe_steps), desc="执行梯度探针"):
+                train_batches.append(inputs)
+            num_batches = len(train_batches)
+            for step in tqdm(range(probe_steps), desc="执行梯度探针(batch)"):
                 total_loss = 0.0
                 valid_samples = 0
                 optimizer.zero_grad()
-                for inputs in train_inputs:
+                for batch_inputs in train_batches:
                     try:
-                        outputs = model(**inputs, labels=inputs["input_ids"])
+                        outputs = model(**batch_inputs, labels=batch_inputs["input_ids"])
                         loss = outputs.loss
                         if not torch.isfinite(loss):
                             logger.warning(f"检测到无效的损失值: {loss.item()}")
                             continue
-                        total_loss += loss.item()
-                        valid_samples += 1
+                        total_loss += loss.item() * batch_inputs["input_ids"].size(0)
+                        valid_samples += batch_inputs["input_ids"].size(0)
+                        loss.backward()
                     except RuntimeError as e:
                         logger.warning(f"在训练步骤中发生错误: {str(e)}")
                         continue
                 if valid_samples > 0:
                     avg_loss = total_loss / valid_samples
-                    loss_tensor = torch.tensor(avg_loss, requires_grad=True, device=self.device)
-                    loss_tensor.backward()
                     step_grad_norm = 0.0
                     for param in model.parameters():
                         if param.grad is not None:
@@ -104,32 +144,21 @@ class DynamicProbeAnalyzer(DatasetAnalyzer):
                             initial_loss = avg_loss
                         if step % 10 == 0 and num_batches >= 2:
                             batch_grad_vectors = []
-                            for batch_idx in range(num_batches):
-                                start_idx = batch_idx * batch_size
-                                end_idx = start_idx + batch_size
-                                batch_inputs = train_inputs[start_idx:end_idx]
+                            for batch_inputs in train_batches:
                                 optimizer.zero_grad()
-                                batch_loss = 0.0
-                                batch_valid = 0
-                                for inputs in batch_inputs:
-                                    try:
-                                        outputs = model(**inputs, labels=inputs["input_ids"])
-                                        loss = outputs.loss
-                                        if torch.isfinite(loss):
-                                            batch_loss += loss.item()
-                                            batch_valid += 1
-                                    except:
-                                        continue
-                                if batch_valid > 0:
-                                    avg_batch_loss = batch_loss / batch_valid
-                                    batch_loss_tensor = torch.tensor(avg_batch_loss, requires_grad=True, device=self.device)
-                                    batch_loss_tensor.backward()
-                                    grad_vector = []
-                                    for param in model.parameters():
-                                        if param.grad is not None:
-                                            grad_vector.extend(param.grad.flatten().cpu().numpy())
-                                    if grad_vector:
-                                        batch_grad_vectors.append(np.array(grad_vector))
+                                try:
+                                    outputs = model(**batch_inputs, labels=batch_inputs["input_ids"])
+                                    loss = outputs.loss
+                                    if torch.isfinite(loss):
+                                        loss.backward()
+                                        grad_vector = []
+                                        for param in model.parameters():
+                                            if param.grad is not None:
+                                                grad_vector.extend(param.grad.flatten().cpu().numpy())
+                                        if grad_vector:
+                                            batch_grad_vectors.append(np.array(grad_vector))
+                                except:
+                                    continue
                             if len(batch_grad_vectors) >= 2:
                                 batch_similarities = []
                                 for i in range(len(batch_grad_vectors)):
@@ -168,10 +197,10 @@ class DynamicProbeAnalyzer(DatasetAnalyzer):
                 torch.cuda.empty_cache()
         return loss_decay_rate, avg_grad_norm, gradient_consistency 
 
-    def extract_all_dynamic_features(self, dataset: List[Dict], hyperparams: HyperParams, probe_steps: int = 100, sample_size: int = 50) -> Dict[str, float]:
-        """一次性提取所有动态特征"""
+    def extract_all_dynamic_features(self, dataset: List[Dict], hyperparams: HyperParams, probe_steps: int = 100, sample_size: int = 50, batch_size: int = 8) -> Dict[str, float]:
+        """一次性提取所有动态特征（支持最终格式，批量）"""
         loss_decay_rate, avg_grad_norm, gradient_consistency = self.calculate_loss_decay_rate(
-            dataset, hyperparams, probe_steps, sample_size
+            dataset, hyperparams, probe_steps, sample_size, batch_size
         )
         return {
             "loss_decay_rate": loss_decay_rate,

@@ -30,29 +30,34 @@ def extract_all_features(
     一口气提取所有特征（基础+静态+动态）
     
     优化策略：将动态探针放在最后，只使用一个模型实例
+    注意：静态特征必须在动态特征之前提取，避免模型状态冲突
     """
     # 创建基础分析器（只加载一次模型）
     base_analyzer = DatasetAnalyzer(base_model_name)
     
     try:
-        # 基础特征
+        # 1. 基础特征（不影响模型状态）
         logger.info("提取基础特征...")
         basic_features = base_analyzer.extract_all_basic_features(dataset, hyperparams, static_sample_size)
         
-        # 静态特征（复用基础分析器的模型）
+        # 2. 静态特征（必须在动态特征之前，因为动态特征会修改模型状态）
         logger.info("提取静态特征...")
-        static_analyzer = StaticFeatureExtractor(base_model_name)
-        static_analyzer.model = base_analyzer.model
-        static_analyzer.tokenizer = base_analyzer.tokenizer
-        static_features = static_analyzer.extract_all_static_features(dataset, static_sample_size)
+        static_analyzer = StaticFeatureExtractor(
+            model=base_analyzer.model,
+            tokenizer=base_analyzer.tokenizer,
+            device=base_analyzer.device
+        )
+        static_features = static_analyzer.extract_all_static_features(dataset, static_sample_size, batch_size=8)
         
-        # 动态特征（复用基础分析器的模型，但会进行训练）
+        # 3. 动态特征（最后提取，因为会修改模型状态）
         logger.info("提取动态特征...")
-        dynamic_analyzer = DynamicProbeAnalyzer(base_model_name)
-        dynamic_analyzer.model = base_analyzer.model
-        dynamic_analyzer.tokenizer = base_analyzer.tokenizer
+        dynamic_analyzer = DynamicProbeAnalyzer(
+            model=base_analyzer.model,
+            tokenizer=base_analyzer.tokenizer,
+            device=base_analyzer.device
+        )
         dynamic_features = dynamic_analyzer.extract_all_dynamic_features(
-            dataset, hyperparams, dynamic_probe_steps, dynamic_sample_size
+            dataset, hyperparams, dynamic_probe_steps, dynamic_sample_size, batch_size=8
         )
         
         # 合并所有特征
