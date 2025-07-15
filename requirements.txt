@@ -1,51 +1,8 @@
-# -------------------------------------------------
-# 核心深度学习与计算框架 (Core DL & Computation Frameworks)
-# -------------------------------------------------
-# PyTorch, 建议使用与你的 CUDA 版本匹配的命令进行安装
-# 例如: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-torch==2.3.1
-numpy==1.26.4
-pandas==2.2.2
-scikit-learn==1.5.0
-
-# -------------------------------------------------
-# Hugging Face 生态系统 (Hugging Face Ecosystem)
-# -------------------------------------------------
-# Transformers 核心库
-transformers==4.41.2
-# PEFT (LoRA) 参数高效微调库
-peft==0.11.1
-# Datasets 库，用于加载 SQuAD 等标准数据集
-datasets==2.19.2
-# Evaluate 库，用于计算 EM, F1, ROUGE 等标准指标
-evaluate==0.4.2
-# 加速模型加载和分布式训练
-accelerate==0.30.1
-# 模型量化库 (8-bit, 4-bit)
-bitsandbytes==0.43.1
-
-# -------------------------------------------------
-# 数据生成与 API (Data Generation & APIs)
-# -------------------------------------------------
-# 用于调用 OpenAI API 生成合成数据
-openai==1.30.1
-
-# -------------------------------------------------
-# 可解释性与分析 (Explainability & Analysis)
-# -------------------------------------------------
-# SHAP (SHapley Additive exPlanations)
-shap==0.45.1
-
-# -------------------------------------------------
-# 其他工具与依赖 (Utilities & Dependencies)
-# -------------------------------------------------
-# 进度条工具
-tqdm==4.66.4
-# 用于从 .env 文件加载环境变量
-python-dotenv==1.0.1
-# 常被 tokenizers 依赖
-sentencepiece==0.2.0
-protobuf==4.25.3
-# 用于某些评估指标计算
-rouge_score==0.1.2
-scipy==1.13.1
+# 推荐依赖版本，适用于本项目的特征提取与数据格式转换
+transformers>=4.30.0,<5.0.0
+peft>=0.6.0,<0.8.0
+torch>=1.13.0,<3.0.0
+tqdm>=4.64.0
+numpy>=1.21.0
+scikit-learn>=1.0.0
+# 如需支持更多格式或功能，可根据实际情况补充其它依赖 
