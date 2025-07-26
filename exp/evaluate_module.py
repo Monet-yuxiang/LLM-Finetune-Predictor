@@ -159,9 +159,16 @@ def batch_generate(
         # 移除early_stopping，因为num_beams=1时不需要
     }
     
+    # 确保padding_side设置正确，避免重复警告
+    tokenizer.padding_side = 'left'
+    
     with torch.no_grad():
         for i in tqdm(range(0, len(prompts), batch_size), desc="推理进度"):
             batch_prompts = prompts[i:i+batch_size]
+            
+            # 确保每次调用前都设置正确的padding
+            tokenizer.padding_side = 'left'
+            
             inputs = tokenizer(
                 batch_prompts, 
                 return_tensors="pt", 
@@ -238,6 +245,8 @@ def recommend_batch_size(
         else:
             prompts.append("")
     
+    # 确保padding_side设置正确
+    tokenizer.padding_side = 'left'
     inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
     token_lens = [len(ids) for ids in inputs['input_ids']]
     total_tokens = sum([l + max_new_tokens for l in token_lens])
